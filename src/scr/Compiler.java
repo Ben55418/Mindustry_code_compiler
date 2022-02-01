@@ -36,8 +36,72 @@ public class Compiler {
 	}
 	
 	
+	//what it initially ran, deals with functions
+	public String fullCompile(String input) {
+		
+		//initial splitting and organizing lines
+		String[] linesTemp = input.split("\n");
+		ArrayList<String> linesSort = new ArrayList<String>();
+		for(String line : linesTemp) {
+			if(line.trim() != "") linesSort.add(line);
+		}
+		
+		String[] lines = new String[linesSort.size()];
+		for(int i = 0; i < linesSort.size(); i++) {
+			lines[i] = linesSort.get(i).replaceAll("\t", " ");
+		}
+		
+		//find and add functions
+		for(int i = 0; i < lines.length; i++) {
+			String line = lines[i];
+			if(isFunctionStatement(line)) {
+				int startIndex = i;
+			
+				String onlyParameters = line.substring(line.indexOf("(") + 1, line.indexOf(")"));
+				String[] p = onlyParameters.split(",");
+				
+				String[] parameters = new String[p.length];
+				
+				for(int j = 0; j < p.length; j++) parameters[j] = p[j].trim(); 
+				
+				String content = "";
+				i++;
+				String l = lines[i];
+				
+				int afterLen = letterIndex(l);
+				while(0 < letterIndex(l)){
+					content += l.substring(afterLen) + "\n";
+					i++;
+					if(i >= lines.length) break;
+					l = lines[i];
+					afterLen = letterIndex(l);
+				}
+				int endIndex = i;
+				
+				for(int j = startIndex; j < endIndex; j++) {
+					lines[j] = "";
+				}
+				
+				// currently at the stage where lines the content of the lines are obtained and there is access to parameters, the plan is to
+				// keep track of all created variables and add an "<tag>_<var name>_<functon name>" behind it so that the variables are unique and the function behaves 
+				// within its own space. Access to outside created variables also needs to be kept in mind.
+			}
+		}
+		
+		
+		
+		//push the remaining code to be compiled
+		String output = lines[0];
+		for(int i = 1; i < lines.length; i++) {
+			output += "\n" + lines[i];
+		}
+		
+		return compile(output, 0);
+	}
+	
+	
 	//the main function ----------------------------------------------------------------------------------------------------
-	public String compile(String input, int offset) {
+	private String compile(String input, int offset) {
 		
 		//initial splitting and organizing lines
 		String[] linesTemp = input.split("\n");
@@ -47,26 +111,22 @@ public class Compiler {
 		for(String line : linesTemp) {
 			if(line.trim() != "") linesSort.add(line);
 		}
+		
 		String[] lines = new String[linesSort.size()];
 		for(int i = 0; i < linesSort.size(); i++) {
 			lines[i] = linesSort.get(i).replaceAll("\t", " ");
 		}
 		
-		//find and add functions
-		
-		
-		
 		//full compile
-		for (int i = 0; i < lines.length; i++) {
+		for(int i = 0; i < lines.length; i++) {
 			String line = lines[i];
 			
 			if(isWhileLoop(line)) {
 				String content = "";
-				int preLen = line.indexOf("while");
 				i++;
 				String l = lines[i];
 				int afterLen = letterIndex(l);
-				while(preLen < letterIndex(l) && i < lines.length){
+				while(0 < letterIndex(l) && i < lines.length){
 					content += l.substring(afterLen) + "\n";
 					i++;
 					if(i >= lines.length) break;
@@ -79,11 +139,10 @@ public class Compiler {
 			
 			else if(isIfStatement(line)) {
 				String content = "";
-				int preLen = line.indexOf("if");
 				i++;
 				String l = lines[i];
 				int afterLen = letterIndex(l);
-				while(preLen < letterIndex(l)){
+				while(0 < letterIndex(l)){
 					content += l.substring(afterLen) + "\n";
 					i++;
 					if(i >= lines.length) break;
@@ -100,12 +159,11 @@ public class Compiler {
 						lineArray.add(l);
 						
 						content = "";
-						preLen = l.indexOf("el");
 						i++;
 						l = lines[i];
 						afterLen = letterIndex(l);
 						
-						while(preLen < letterIndex(l)){
+						while(0 < letterIndex(l)){
 							content += l.substring(afterLen) + "\n";
 							i++;
 							if(i >= lines.length) break;
@@ -168,6 +226,11 @@ public class Compiler {
 	
 	private Boolean isElseStatement(String input) {
 		try {return input.substring(0, 4).equals("else") && input.charAt(input.length()-1) == ':';}
+		catch(Exception e) {return false;}
+	}
+	
+	private Boolean isFunctionStatement(String input) {
+		try {return input.substring(0, 3).equals("def") && input.charAt(input.length()-1) == ':' && input.trim().charAt(input.length()-2) == ')';}
 		catch(Exception e) {return false;}
 	}
 	
@@ -340,8 +403,6 @@ public class Compiler {
 		
 		return out.trim();
 	}
-
-	
 	
 	// evaluations of logic ----------------------------------------------------------------------------------------------
 	private String[] evaluate(String statement, int stepper) {
@@ -349,11 +410,13 @@ public class Compiler {
 		statement = statement.trim();
 		ArrayList<String> output = new ArrayList<String>();
 		
-		int p = getLooseParentheseIndex(statement);
-		
-		
-		if(getLooseParentheseIndex(statement) != -1) {
+
+		if(getIndexIndex(statement) != -1) {
 			
+		}
+		
+		int p = getLooseParentheseIndex(statement);
+		if(p != -1) {
 			String left = statement.substring(0, p).trim();
 			String right = statement.substring(getMatchingParenthese(statement, p), statement.length());
 			
@@ -603,9 +666,6 @@ public class Compiler {
 		if (getOp(input) == "not found" && getBuiltFunc(input) == "not found" && getBoolEval(input) == "not found" && input.contains("(") == false) {
 			return false;
 		}
-		else if(getOpIndex(input.trim()) == 0) {
-			return false;
-		}
 		return true;
 	}
 	
@@ -624,7 +684,16 @@ public class Compiler {
 		return i;
 	}
 	
+	private int getIndex(String input) {
+		
+	}
+	
+	private int getIndexIndex(String input) {
+		
+	}
+	
 	private int letterIndex(String input) {
+		if(input.charAt(0) != ' ') return 0;
 		for(int i = 0; i < input.length(); i++) {
 			if(input.charAt(i) != ' ') return i;
 		}
@@ -635,14 +704,6 @@ public class Compiler {
 		String[] output = new String[input.size()];
 		for(int i = 0; i < output.length; i++) {
 			output[i] = input.get(i);
-		}
-		return output;
-	}
-	
-	private String[] stringSubArray(String[] input, int s, int e) {
-		String[] output = new String[e-s];
-		for(int i = s; i < e; i++) {
-			output[i-s] = input[i];
 		}
 		return output;
 	}
@@ -677,9 +738,9 @@ public class Compiler {
 		
 		
 		try {
-			File file = new File("2048game/2048control.txt");
+			// File file = new File("2048game/2048control.txt");
 			// File file = new File("2048game/2048display.txt");
-			// File file = new File("example.txt");
+			File file = new File("example.txt");
 		    Scanner reader = new Scanner(file);
 		    while (reader.hasNextLine()) {
 		        String data = reader.nextLine();
@@ -697,7 +758,7 @@ public class Compiler {
 		
 		long start = System.currentTimeMillis();
 		
-		String a = Comp.compile(i, 0);
+		String a = Comp.fullCompile(i);
 		
 		long end = System.currentTimeMillis();
 		
