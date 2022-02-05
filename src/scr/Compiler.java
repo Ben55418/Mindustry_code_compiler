@@ -205,7 +205,7 @@ public class Compiler {
 		if(input.contains("=")) {
 			String l = input.substring(0, input.indexOf('=')).trim();
 			
-			if(isEvaluatable(l) == false && isVariableName(l)) {
+			if((isEvaluatable(l) == false && isVariableName(l)) || getIndex(l) != "not found") {
 				return true;
 			}
 		}
@@ -244,12 +244,26 @@ public class Compiler {
 	// evaluations of lines --------------------------------------------------------------------------------------
 	private String assignment(String line) { 
 		String[] preOut;
-		String output = "set ";
+		String output = "";
 		String[] s = line.split("=", 2);
 		String varName = s[0].strip();
+		
+		String gi = getIndex(varName);
+		String writeIndex = "error";
+		if(gi != "not found") {
+			varName = tag + "_r";
+			
+			String internals = gi.substring(gi.indexOf("[") + 1, getMatchingBrackets(gi, gi.indexOf("[")));
+
+			if(isEvaluatable(internals)){
+				output += assignment(tag + "_i = " + internals) + "\n";
+				writeIndex = tag + "_i";
+			}
+			else writeIndex = internals;
+		}
+		
 		if(isEvaluatable(s[1])) {
 			preOut = evaluate(s[1], 0);
-			output = "";
 			
 			for(int i = 0; i < preOut.length; i++) {
 				if(getOp(preOut[i]) != "not found") {
@@ -328,10 +342,18 @@ public class Compiler {
 					}
 				}
 			}
+			if(gi != "not found") {
+				output += "\nwrite " + varName + " " + gi.substring(0, gi.indexOf("[")) + " " + writeIndex;
+			}
 		}
 		else {
-			output += varName + " ";
-			output += s[1].strip();
+			if(gi != "not found") {
+				output = "write " + s[1].strip() + " " + gi.substring(0, gi.indexOf("[")) + " " + writeIndex;
+			}
+			else {
+				output += "set " + varName + " ";
+				output += s[1].strip();
+			}
 		}
 		return output;
 	}
@@ -538,22 +560,7 @@ public class Compiler {
 			String left = statement.substring(0, i).trim();
 			String right = statement.substring(i + op.length(), statement.length()).trim();
 			
-			String leftSplit = left;
-			String rightSplit = right;
-			
-			if(isEvaluatable(right)) {
-				rightSplit = tag + "_r";
-				for(String e : evaluate(right, stepper)) {
-					output.add(e);
-				}
-		
-			}
-			if(isEvaluatable(left)) {
-				leftSplit = tag + "_l";
-				output.add(compile(tag + "_l = " + left.trim(), 0));
-			}
-			
-			output.add(leftSplit + " " + op + " " + rightSplit);
+			output.add(left + " " + op + " " + right);
 		}
 		
 		return output.toArray(new String[output.size()]);
