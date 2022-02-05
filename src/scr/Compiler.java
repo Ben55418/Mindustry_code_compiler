@@ -9,11 +9,13 @@ import java.util.Random;
 import java.util.Scanner;
 
 public class Compiler {
+	public int saltLength = 5;
+	
 	private final String[] builtFunctions = {"max", "min", "abs"};
 	private final String[][] operands = {{"^", "**", "%"}, {"*", "//", "/"}, {"+", "-"}, {"<<", ">>"}};
 	private final String[] evaluators = {"<=", "<", ">=", ">", "<>", "!=", "===", "=="};
 	private final String[] metaChars = {"*", "+", "?","^", "$"};
-	private final String tag = getSaltString();
+	private final String tag = getSaltString(saltLength);
 	private Hashtable<String, String> opNames = new Hashtable<String, String>();
 	
 	//do stuff on start ------------------------------------------------------------------------------------------------------
@@ -201,8 +203,9 @@ public class Compiler {
 	// identify line types
 	private Boolean isAssignmentLine(String input) {
 		if(input.contains("=")) {
-			String l = input.substring(0, input.indexOf('='));
-			if(isEvaluatable(l) == false && getOp(l) == "not found" && getBuiltFunc(l) == "not found") {
+			String l = input.substring(0, input.indexOf('=')).trim();
+			
+			if(isEvaluatable(l) == false && isVariableName(l)) {
 				return true;
 			}
 		}
@@ -308,6 +311,22 @@ public class Compiler {
 						output += "\n";
 					}
 				}
+				
+				else if(preOut[i].substring(0, 5).equals("read ") && preOut[i].charAt(5) != '=') {
+					if(i+1 == preOut.length) {
+						output += "read ";
+						output += varName + " ";
+						output += preOut[i].split(" ")[1] + " ";
+						output += preOut[i].split(" ")[2] + " ";
+					}
+					else {
+						output += "read ";
+						output += tag + i + " ";
+						output += preOut[i].split(" ")[1] + " ";
+						output += preOut[i].split(" ")[2] + " ";
+						output += "\n";
+					}
+				}
 			}
 		}
 		else {
@@ -409,14 +428,40 @@ public class Compiler {
 		
 		statement = statement.trim();
 		ArrayList<String> output = new ArrayList<String>();
-		
 
-		if(getIndexIndex(statement) != -1) {
+		int p = getLooseParentheseIndex(statement);
+
+		if(getIndex(statement) != "not found") {
+			p = statement.indexOf(getIndex(statement));
+			int q = p + getIndex(statement).length();
 			
+			String left = statement.substring(0, p).trim();
+			String right = statement.substring(q, statement.length());
+			
+			String inBrackets = statement.substring(statement.indexOf("[") + 1, q - 1);
+			String bracketsEvaluated = inBrackets;
+			
+			if(isEvaluatable(inBrackets)) {
+				for(String e : evaluate(inBrackets, stepper)) {
+					output.add(e);
+					stepper++;
+				}
+				bracketsEvaluated = tag + (stepper-1);
+			}
+			output.add("read " + getIndex(statement).substring(0, getIndex(statement).indexOf("[")) + " " + bracketsEvaluated);
+				
+			String leftSplit = "";
+			String rightSplit = "";
+			
+			if(isEvaluatable(right)) rightSplit = right.substring(getEvalIndex(right));
+			if(isEvaluatable(left)) leftSplit = left.substring(0, getLastEvalIndex(left));
+			
+			for(String e : evaluate((leftSplit + " " + tag + (stepper) + " " + rightSplit).trim(), stepper)) {
+				output.add(e);
+			}
 		}
 		
-		int p = getLooseParentheseIndex(statement);
-		if(p != -1) {
+		else if(p != -1) {
 			String left = statement.substring(0, p).trim();
 			String right = statement.substring(getMatchingParenthese(statement, p), statement.length());
 			
@@ -424,6 +469,7 @@ public class Compiler {
 
 			for(String e : evaluate(internals, stepper)) {
 				output.add(e);
+				stepper++;
 			}
 			
 			String leftSplit = "";
@@ -431,7 +477,6 @@ public class Compiler {
 			
 			if(isEvaluatable(right)) rightSplit = right.substring(getEvalIndex(right));
 			if(isEvaluatable(left)) leftSplit = left.substring(0, getLastEvalIndex(left));
-
 			
 			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper)) {
 				output.add(e);
@@ -661,9 +706,22 @@ public class Compiler {
 		}
 		return -1;
 	}
+	private int getMatchingBrackets(String input, int startIndex) {
+		int count = 0;
+		for(int i = startIndex+1; i < input.length(); i++) {
+			if(input.charAt(i) == ']') {
+				if(count == 0) return i;
+				else count--;
+			}
+			if(input.charAt(i) == '[') {
+				count++;
+			}
+		}
+		return -1;
+	}
 	
 	private Boolean isEvaluatable(String input) {
-		if (getOp(input) == "not found" && getBuiltFunc(input) == "not found" && getBoolEval(input) == "not found" && input.contains("(") == false) {
+		if (getOp(input) == "not found" && getBuiltFunc(input) == "not found" && getBoolEval(input) == "not found" && input.contains("(") == false && getIndex(input) == "not found") {
 			return false;
 		}
 		return true;
@@ -678,18 +736,113 @@ public class Compiler {
 	
 	private int getLastEvalIndex(String input) {
 		int i = -1;
-		if(getOpIndex(input) > i && getOpIndex(input) != input.length()) i = getOpIndex(input) + getOp(input).length();
-		if(getBuiltFuncIndex(input) > i && getBuiltFuncIndex(input) != input.length()) i = getBuiltFuncIndex(input) + getBuiltFunc(input).length();
-		if(input.indexOf(getBoolEval(input)) > i) i = input.indexOf(getBoolEval(input)) + getBoolEval(input).length();
+		if(getLastOpIndex(input) > i) i = getLastOpIndex(input) + getLastOp(input).length();
+		if(getLastBuiltFuncIndex(input) > i) i = getLastBuiltFuncIndex(input) + getLastBuiltFunc(input).length();
+		if(input.indexOf(getLastBoolEval(input)) > i) i = input.indexOf(getLastBoolEval(input)) + getLastBoolEval(input).length();
 		return i;
 	}
 	
-	private int getIndex(String input) {
-		
+	private String getLastOp(String input) {
+		String output = "not found";
+		int i = -1;
+		int s = operands.length;
+		for(int a = 0; a < operands.length; a++) {
+			for(int b = 0; b < operands[a].length; b++) {
+				String op = operands[a][b];
+				if(input.contains(op)) {
+					if(a < s) {
+						output = op;
+						i = input.lastIndexOf(op);
+						s = a;
+					}
+					else if(a == s && input.lastIndexOf(op) > i) {
+						output = op;
+						i = input.lastIndexOf(op);
+						s = a;
+					}
+				}
+			}
+		}
+		return output;
 	}
 	
-	private int getIndexIndex(String input) {
+	private int getLastOpIndex(String input) {
+		int i = -1;
+		for(String[] a : operands) for(String b : a) {
+			if(input.contains(b)) {
+				if(input.lastIndexOf(b) > i) {
+					i = input.lastIndexOf(b);
+				}
+			}
+		}
+		return i;
+	}
+	
+	private String getLastBuiltFunc(String input) {
+		String output = "not found";
+		int i = -1;
+		for(int a = 0; a < builtFunctions.length; a++) {
+			String op = builtFunctions[a];
+			if(input.contains(op)) {
+				Boolean execute = false;
+				for(int x = input.lastIndexOf(op) + op.length(); x < input.length(); x++) {
+					if(input.charAt(x) == '(') {
+						execute = true;
+						break;
+					}
+					else if(input.charAt(x) != ' ') break;
+				}
+				if(execute) {
+					if(a < i) {
+						output = op;
+						i = input.indexOf(op);
+					}
+				}
+			}
+		}
+		return output;
+	}
+	
+	private int getLastBuiltFuncIndex(String input) {
+		int i = -1;
+		for(String a : builtFunctions) {
+			if(input.contains(a)) {
+				if(input.lastIndexOf(a) < i) {
+					i = input.lastIndexOf(a);
+				}
+			}
+		}
+		return i;
+	}
+	
+	private String getLastBoolEval(String input) {
+		int i = -1;
+		String out = "not found";
+		for(String eval : evaluators) {
+			int e = input.lastIndexOf(eval);
+			if(e != -1 && e > i) {
+				out = eval;
+				i = e;
+			}
+		}
+		return out;
+	}
+	
+	private String getIndex(String input) {
+		int startBracketIndex = input.indexOf('[');
+		if(startBracketIndex == -1) return "not found";
 		
+		int endIndex = getMatchingBrackets(input, startBracketIndex);
+		int startIndex = 0;
+		
+		for(int i = startBracketIndex - 1; i >= 0; i--) {
+			if(!isVariableChar(input.charAt(i))) {
+				startIndex = i;
+				break;
+			}
+		}
+		
+		return input.substring(startIndex, endIndex+1);
 	}
 	
 	private int letterIndex(String input) {
@@ -698,6 +851,22 @@ public class Compiler {
 			if(input.charAt(i) != ' ') return i;
 		}
 		return -1;
+	}
+	
+	private String startVarChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
+	private String varChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_123456789";
+	private Boolean isVariableChar(char input) {
+		return varChars.contains(String.valueOf(input));
+	}
+	
+	private Boolean isVariableName(String input) {
+		if(!startVarChars.contains(String.valueOf(input.charAt(0)))) return false;
+		for(char c : input.toCharArray()) {
+			if(!isVariableChar(c)) {
+				return false;
+			}
+		}
+		return true;
 	}
 	
 	private String[] toStringArray(ArrayList<String> input) {
@@ -715,11 +884,11 @@ public class Compiler {
 		return input;
 	}
 	
-	private String getSaltString() {
-        String SALTCHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	private String getSaltString(int len) {
+	    String SALTCHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         StringBuilder salt = new StringBuilder();
         Random rnd = new Random();
-        while (salt.length() < 5) { // length of the random string.
+        while (salt.length() < len) { // length of the random string.
             int index = (int) (rnd.nextFloat() * SALTCHARS.length());
             salt.append(SALTCHARS.charAt(index));
         }
