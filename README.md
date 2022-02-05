@@ -31,11 +31,12 @@ abs()
 !=
 ===
 ==
+
+referencing cells (reading) by name and brackets: cell1[4 + x]
 ```
 
 ## Errors
 
 ```
 currently a bug involving negative numbers and the "subtract" symbol, do 'a = 0 - x' i guess.
-Has trouble with the statement x = a * b + c * d + e * f
 ```
