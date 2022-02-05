@@ -32,7 +32,8 @@ abs()
 ===
 ==
 
-referencing cells (reading) by name and brackets: cell1[4 + x]
+reading from cells by name and brackets: x = cell1[4 + a]
+writing to cells by name and brackets cell1[4 + a] = x
 ```
 
 ## Errors
