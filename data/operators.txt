@@ -14,7 +14,19 @@
 
 max:max
 min:min
+angle:angle
+len:len
+noise:noise
 abs:abs
+log:log
+log10:log10
+sin:sin
+cos:cos
+tan:tan
+floor:floor
+ceil:ceil
+sqrt:sqrt
+rand:rand
 
 ==:equal
 ===:strictEqual
