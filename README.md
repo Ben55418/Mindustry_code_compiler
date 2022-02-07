@@ -29,7 +29,7 @@ ceil()
 sqrt()
 rand()
 ```
-### Mathmatical Operators
+### Mathematical Operators
 ```
 ^
 **
@@ -67,5 +67,5 @@ currently a bug involving negative numbers and the "subtract" symbol, do 'a = 0 
 All names for functions can be directly modified in data/operators.txt, along with adding additional call names (L15-30). Do not modify anything else.
 For example: max:max can be changed to getMax:max to modify the name. The right side field determines what is given to Mindustry, so do not modify it.
 
-This program generates a random tag to be used for additionally created variables. The tag length, or the tag its self, can be modified on line 12 or 18.
+This program generates a random tag to be used for additionally created variables. The tag length, or the tag itself, can be modified on line 12 or 18.
 ```
