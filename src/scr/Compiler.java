@@ -11,12 +11,17 @@ import java.util.Scanner;
 public class Compiler {
 	public int saltLength = 5;
 	
-	private final String[] builtFunctions = {"max", "min", "abs"};
+	private final String[] builtFunctions = {"max", "min", "angle", "len", "noise", "abs", "log", "log10", "sin", "cos", "tan", "floor", "ceil", "sqrt", "rand"};
 	private final String[][] operands = {{"^", "**", "%"}, {"*", "//", "/"}, {"+", "-"}, {"<<", ">>"}};
 	private final String[] evaluators = {"<=", "<", ">=", ">", "<>", "!=", "===", "=="};
 	private final String[] metaChars = {"*", "+", "?","^", "$"};
 	private final String tag = getSaltString(saltLength);
 	private Hashtable<String, String> opNames = new Hashtable<String, String>();
+	
+	private String[] functionNamesList = new String[0];
+	private String[] functionContentsList = new String[0];
+	private String[][] functionParametersList = new String[0][0];
+	private int[] functionIndexesList = new int[0];
 	
 	//do stuff on start ------------------------------------------------------------------------------------------------------
 	Compiler(){
@@ -53,10 +58,14 @@ public class Compiler {
 			lines[i] = linesSort.get(i).replaceAll("\t", " ");
 		}
 		
+		ArrayList<String> functionNames = new ArrayList<String>();
+		ArrayList<String> functionContents = new ArrayList<String>();
+		ArrayList<String[]> functionParameters = new ArrayList<String[]>();
+		
 		//find and add functions
 		for(int i = 0; i < lines.length; i++) {
 			String line = lines[i];
-			if(isFunctionStatement(line)) {
+			if(isFunctionDefStatement(line)) {
 				int startIndex = i;
 			
 				String onlyParameters = line.substring(line.indexOf("(") + 1, line.indexOf(")"));
@@ -70,13 +79,12 @@ public class Compiler {
 				i++;
 				String l = lines[i];
 				
-				int afterLen = letterIndex(l);
+				int preLen = letterIndex(l);
 				while(0 < letterIndex(l)){
-					content += l.substring(afterLen) + "\n";
+					content += l.substring(preLen) + "\n";
 					i++;
 					if(i >= lines.length) break;
 					l = lines[i];
-					afterLen = letterIndex(l);
 				}
 				int endIndex = i;
 				
@@ -84,13 +92,41 @@ public class Compiler {
 					lines[j] = "";
 				}
 				
-				// currently at the stage where lines the content of the lines are obtained and there is access to parameters, the plan is to
-				// keep track of all created variables and add an "<tag>_<var name>_<functon name>" behind it so that the variables are unique and the function behaves 
-				// within its own space. Access to outside created variables also needs to be kept in mind.
+				String functionName = line.substring(4, line.indexOf("("));
+				
+				functionNames.add(functionName);
+				functionContents.add(content);
+				functionParameters.add(parameters);
 			}
 		}
 		
+		int len = functionNames.size();
+		int location = 1;
 		
+		functionIndexesList = new int[len];
+		functionNamesList = new String[len];
+		functionContentsList = new String[len];
+		functionParametersList = new String[len][];
+		
+		for(int i = 0; i < len; i++) {
+			functionIndexesList[i] = location;
+			functionNamesList[i] = functionNames.get(i);
+			functionParametersList[i] = functionParameters.get(i);
+			
+			functionContentsList[i] = compile(functionContents.get(i), location);
+			
+			if(functionContentsList[i].substring(functionContentsList[i].length()-3).equals("_fi") == false) {
+				functionContentsList[i] += "\nset @counter " + tag + "_fi";
+			}
+			String evaluated = functionContentsList[i];
+			location += (evaluated.length() - evaluated.replace("\n", "").length()) / "\n".length() + 1;
+			
+			for(String variableName : functionParametersList[i]) {
+				functionContentsList[i] = functionContentsList[i].replaceAll(" " + variableName + " ", " " + tag + "_" + functionNamesList[i] + "_" + variableName + " ");
+				functionContentsList[i] = functionContentsList[i].replaceAll(" " + variableName + " ", " " + tag + "_" + functionNamesList[i] + "_" + variableName + " ");
+				functionContentsList[i] = functionContentsList[i].replaceAll(" " + variableName + "\n", " " + tag + "_" + functionNamesList[i] + "_" + variableName + "\n");
+			}
+		}
 		
 		//push the remaining code to be compiled
 		String output = lines[0];
@@ -98,7 +134,14 @@ public class Compiler {
 			output += "\n" + lines[i];
 		}
 		
-		return compile(output, 0);
+		//add everything together
+		String finalCompile = "jump " + location + " always\n";
+		for(String content : functionContentsList) {
+			finalCompile += content + "\n";
+		}
+		
+		finalCompile += compile(output, location);
+		return finalCompile;
 	}
 	
 	
@@ -183,11 +226,21 @@ public class Compiler {
 			}
 			
 			else if(isAssignmentLine(line)) {
-				for(String f : assignment(line).split("\n")) compiledLines.add(f);
+				for(String f : assignment(line, offset + compiledLines.size()).split("\n")) compiledLines.add(f);
+			}
+			
+			else if(line.substring(0, 7).equals("return ")) {
+				String returnee = line.substring(7).trim();
+				
+				for(String l : (assignment(tag + "_fr = " + returnee, offset + compiledLines.size()) + "\nset @counter " + tag + "_fi").split("\n")) compiledLines.add(l);
+			}
+			
+			else if(isFunctionStatement(line)) {
+				for(String l : (assignment(tag + "_u = " + line, offset + compiledLines.size())).split("\n")) if(!l.substring(l.length()-3).equals("_fr")) compiledLines.add(l);
 			}
 			
 			else {
-				compiledLines.add(line);
+				if(line.trim().equals("") == false) compiledLines.add(line);
 			}
 			
 		}
@@ -232,8 +285,13 @@ public class Compiler {
 		catch(Exception e) {return false;}
 	}
 	
-	private Boolean isFunctionStatement(String input) {
+	private Boolean isFunctionDefStatement(String input) {
 		try {return input.substring(0, 3).equals("def") && input.charAt(input.length()-1) == ':' && input.trim().charAt(input.length()-2) == ')';}
+		catch(Exception e) {return false;}
+	}
+	
+	private Boolean isFunctionStatement(String input) {
+		try {return isFunc(input) && getFuncIndex(input) == 0 && input.contains("(");}
 		catch(Exception e) {return false;}
 	}
 	
@@ -242,7 +300,8 @@ public class Compiler {
 	
 	
 	// evaluations of lines --------------------------------------------------------------------------------------
-	private String assignment(String line) { 
+	private String assignment(String line, int offset) { 
+		
 		String[] preOut;
 		String output = "";
 		String[] s = line.split("=", 2);
@@ -251,19 +310,19 @@ public class Compiler {
 		String gi = getIndex(varName);
 		String writeIndex = "error";
 		if(gi != "not found") {
-			varName = tag + "_r";
+			varName = tag + "_wv";
 			
 			String internals = gi.substring(gi.indexOf("[") + 1, getMatchingBrackets(gi, gi.indexOf("[")));
 
 			if(isEvaluatable(internals)){
-				output += assignment(tag + "_i = " + internals) + "\n";
-				writeIndex = tag + "_i";
+				output += assignment(tag + "_wi = " + internals, offset) + "\n";
+				writeIndex = tag + "_wi";
 			}
 			else writeIndex = internals;
 		}
 		
 		if(isEvaluatable(s[1])) {
-			preOut = evaluate(s[1], 0);
+			preOut = evaluate(s[1], 0, offset);
 			
 			for(int i = 0; i < preOut.length; i++) {
 				if(getOp(preOut[i]) != "not found") {
@@ -302,7 +361,6 @@ public class Compiler {
 						for(int a = 1; a < parts.length; a++) output += parts[a] + " ";
 						output += "\n";
 					}
-					
 				}
 				
 				else if(getBoolEval(preOut[i]) != "not found") {
@@ -326,6 +384,20 @@ public class Compiler {
 					}
 				}
 				
+				else if(preOut[i].charAt(0) == '=') {
+					if(i+1 == preOut.length) {
+						output += "set " + varName + " " + preOut[i].substring(1).trim();
+					}
+					else {
+						output += "set " + tag + i + " " + preOut[i].substring(1).trim();
+					}
+				}
+				
+				else if(preOut[i].contains("=")) {
+					String[] split = preOut[i].split("=");
+					output += "set " + split[0].trim() + " " + split[1].trim() + "\n";
+				}
+				
 				else if(preOut[i].substring(0, 5).equals("read ") && preOut[i].charAt(5) != '=') {
 					if(i+1 == preOut.length) {
 						output += "read ";
@@ -341,7 +413,12 @@ public class Compiler {
 						output += "\n";
 					}
 				}
+				
+				else if(preOut[i].substring(0, 5).equals("jump ")) {
+					output += preOut[i] + "\n";
+				}
 			}
+			
 			if(gi != "not found") {
 				output += "\nwrite " + varName + " " + gi.substring(0, gi.indexOf("[")) + " " + writeIndex;
 			}
@@ -446,7 +523,7 @@ public class Compiler {
 	}
 	
 	// evaluations of logic ----------------------------------------------------------------------------------------------
-	private String[] evaluate(String statement, int stepper) {
+	private String[] evaluate(String statement, int stepper, int offset) {
 		
 		statement = statement.trim();
 		ArrayList<String> output = new ArrayList<String>();
@@ -464,7 +541,7 @@ public class Compiler {
 			String bracketsEvaluated = inBrackets;
 			
 			if(isEvaluatable(inBrackets)) {
-				for(String e : evaluate(inBrackets, stepper)) {
+				for(String e : evaluate(inBrackets, stepper, offset + output.size())) {
 					output.add(e);
 					stepper++;
 				}
@@ -478,7 +555,7 @@ public class Compiler {
 			if(isEvaluatable(right)) rightSplit = right.substring(getEvalIndex(right));
 			if(isEvaluatable(left)) leftSplit = left.substring(0, getLastEvalIndex(left));
 			
-			for(String e : evaluate((leftSplit + " " + tag + (stepper) + " " + rightSplit).trim(), stepper)) {
+			for(String e : evaluate((leftSplit + " " + tag + (stepper) + " " + rightSplit).trim(), stepper, offset + output.size())) {
 				output.add(e);
 			}
 		}
@@ -489,7 +566,7 @@ public class Compiler {
 			
 			String internals = statement.substring(p + 1, getMatchingParenthese(statement, p));
 
-			for(String e : evaluate(internals, stepper)) {
+			for(String e : evaluate(internals, stepper, offset + output.size())) {
 				output.add(e);
 				stepper++;
 			}
@@ -500,7 +577,7 @@ public class Compiler {
 			if(isEvaluatable(right)) rightSplit = right.substring(getEvalIndex(right));
 			if(isEvaluatable(left)) leftSplit = left.substring(0, getLastEvalIndex(left));
 			
-			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper)) {
+			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper, offset + output.size())) {
 				output.add(e);
 			}
 		}
@@ -522,18 +599,50 @@ public class Compiler {
 			if(isEvaluatable(right)) rightSplit = right.substring(getEvalIndex(right));
 			if(isEvaluatable(left)) leftSplit = left.substring(0, getLastEvalIndex(left));
 			
-			String o = evaluateInternals(internals, func, output, stepper);
+			String o = evaluateInternals(internals, func, output, stepper, offset + output.size());
 			output.add(o);
 
 			stepper++;
-			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper)) {
+			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper, offset + output.size())) {
+				output.add(e);
+			}
+		}
+		
+		else if(getFunc(statement) != "not found") {
+			String func = getFunc(statement);
+			int i = statement.indexOf(func);
+			int end = getMatchingParenthese(statement, i + func.length());
+			
+			String left = statement.substring(0, i).trim();
+			String right = statement.substring(end, statement.length());
+			
+			String internals = statement.substring(i + func.length() + 1, end);
+
+			String leftSplit = "";
+			String rightSplit = "";
+			
+			if(isEvaluatable(right)) rightSplit = right.substring(getEvalIndex(right));
+			if(isEvaluatable(left)) leftSplit = left.substring(0, getLastEvalIndex(left));
+			
+			String[] o = evaluateInternals(internals, func, output, stepper, offset + output.size()).split(" ", 2)[1].split(" ");
+			for(int j = 0; j < o.length; j++) {
+				String variableInputName = o[j];
+				String variableOutputName = tag + "_" + func + "_" + functionParametersList[arrayIndexOfItem(functionNamesList, func)][j];
+				
+				output.add(variableOutputName + " = " + variableInputName);
+			}
+			
+			output.add(tag + "_fi = " + (offset + output.size() + 2));
+			output.add("jump " + functionIndexesList[arrayIndexOfItem(functionNamesList, func)] + " always");
+			output.add("= " + tag + "_fr");
+			
+			stepper++;
+			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper, offset + output.size())) {
 				output.add(e);
 			}
 		}
 		
 		else if(getOp(statement) != "not found"){
-			
-			//evaluate operands
 			String op = getOp(statement);
 			int i = statement.indexOf(op);
 			String left = statement.substring(0, i).trim();
@@ -548,7 +657,7 @@ public class Compiler {
 			output.add(statement.substring(leftSplit.length(), statement.length() - rightSplit.length()).trim());
 			
 			stepper++;
-			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper)) {
+			for(String e : evaluate((leftSplit + " " + tag + (stepper-1) + " " + rightSplit).trim(), stepper, offset + output.size())) {
 				output.add(e);
 			}
 		}
@@ -565,22 +674,19 @@ public class Compiler {
 		
 		return output.toArray(new String[output.size()]);
 	}
-	private String evaluateInternals(String internals, String func, ArrayList<String> output, int stepper) {
+	private String evaluateInternals(String internals, String func, ArrayList<String> output, int stepper, int offset) {
 		String values[] = internals.split(",");
 		String finalValues[] = new String[values.length];
 		
 		for(int v = 0; v < values.length; v++) {
 			String value = values[v];
 			if(isEvaluatable(value)) {
-				String[] f = evaluate(value, stepper);
+				String[] f = evaluate(value, stepper, offset + output.size());
 				for(String e : f){
 					output.add(e);
-					finalValues[v] = tag + stepper;
+					stepper++;
 				}
-				String o = func;
-				for(String a : finalValues) o += " " + a;
-				stepper++;
-				return o;
+				finalValues[v] = tag + (stepper-1);
 			}
 			else finalValues[v] = value;
 		}
@@ -672,6 +778,50 @@ public class Compiler {
 		return false;
 	}
 	
+	private String getFunc(String input) {
+		String output = "not found";
+		int i = input.length();
+		for(int a = 0; a < functionNamesList.length; a++) {
+			String op = functionNamesList[a];
+			if(input.contains(op)) {
+				Boolean execute = false;
+				for(int x = input.indexOf(op) + op.length(); x < input.length(); x++) {
+					if(input.charAt(x) == '(') {
+						execute = true;
+						break;
+					}
+					else if(input.charAt(x) != ' ') break;
+				}
+				if(execute) {
+					if(a < i) {
+						output = op;
+						i = input.indexOf(op);
+					}
+				}
+			}
+		}
+		return output;
+	}
+	
+	private int getFuncIndex(String input) {
+		int i = input.length();
+		for(String a : functionNamesList) {
+			if(input.contains(a)) {
+				if(input.indexOf(a) < i) {
+					i = input.indexOf(a);
+				}
+			}
+		}
+		return i;
+	}
+	
+	private Boolean isFunc(String input) {
+		for(String func : functionNamesList) {
+			if(input.contains(func)) return true;
+		}
+		return false;
+	}
+	
 	private String getBoolEval(String input) {
 		int i = input.length();
 		String out = "not found";
@@ -686,17 +836,25 @@ public class Compiler {
 	}
 	
 	private int getLooseParentheseIndex(String input) {
-		int i = input.indexOf('(');
-		int j = getBuiltFuncIndex(input);
-		int k = getBuiltFunc(input).length();
-		
-		if(j + k == i) {
-			int x =  getLooseParentheseIndex(input.substring(i+1, input.length()));
-			if(x == -1) return -1;
-			else return x + i + 1;
-		}
-		else {
-			return i;
+		int start = 0;
+		while(true) {
+			int first = input.substring(start).indexOf("(");
+			
+			if(first == -1) return -1;
+			
+			int s = 0;
+			for(int i = first-1; i > 0; i--) {
+				if(!isVariableChar(input.charAt(i))) {
+					s = i;
+					break;
+				}
+			}
+			String attachedName = input.substring(s, first);
+			
+			if(!isBuiltFunc(attachedName) && !isFunc(attachedName)) {
+				return first;
+			}
+			start = getMatchingParenthese(input, first);
 		}
 	}
 	
@@ -736,6 +894,7 @@ public class Compiler {
 	
 	private int getEvalIndex(String input) {
 		int i = getOpIndex(input);
+		if(getFuncIndex(input) < i) i = getFuncIndex(input);
 		if(getBuiltFuncIndex(input) < i) i = getBuiltFuncIndex(input);
 		if(getBoolEval(input) != "not found" && input.indexOf(getBoolEval(input)) < i) i = input.indexOf(getBoolEval(input));
 		return i;
@@ -744,6 +903,7 @@ public class Compiler {
 	private int getLastEvalIndex(String input) {
 		int i = -1;
 		if(getLastOpIndex(input) > i) i = getLastOpIndex(input) + getLastOp(input).length();
+		if(getLastFuncIndex(input) > i) i = getLastFuncIndex(input) + getLastFunc(input).length();
 		if(getLastBuiltFuncIndex(input) > i) i = getLastBuiltFuncIndex(input) + getLastBuiltFunc(input).length();
 		if(input.indexOf(getLastBoolEval(input)) > i) i = input.indexOf(getLastBoolEval(input)) + getLastBoolEval(input).length();
 		return i;
@@ -822,6 +982,43 @@ public class Compiler {
 		return i;
 	}
 	
+	private String getLastFunc(String input) {
+		String output = "not found";
+		int i = -1;
+		for(int a = 0; a < functionNamesList.length; a++) {
+			String op = functionNamesList[a];
+			if(input.contains(op)) {
+				Boolean execute = false;
+				for(int x = input.lastIndexOf(op) + op.length(); x < input.length(); x++) {
+					if(input.charAt(x) == '(') {
+						execute = true;
+						break;
+					}
+					else if(input.charAt(x) != ' ') break;
+				}
+				if(execute) {
+					if(a < i) {
+						output = op;
+						i = input.indexOf(op);
+					}
+				}
+			}
+		}
+		return output;
+	}
+	
+	private int getLastFuncIndex(String input) {
+		int i = -1;
+		for(String a : functionNamesList) {
+			if(input.contains(a)) {
+				if(input.lastIndexOf(a) < i) {
+					i = input.lastIndexOf(a);
+				}
+			}
+		}
+		return i;
+	}
+	
 	private String getLastBoolEval(String input) {
 		int i = -1;
 		String out = "not found";
@@ -889,6 +1086,15 @@ public class Compiler {
 			if(input.contains(c)) return "\\" + input;
 		}
 		return input;
+	}
+	
+	private int arrayIndexOfItem(Object[] input, Object obj) {
+		for (int i = 0; i < input.length; i++) {
+		    if(obj.equals(obj)) {
+		       return i;
+		    }
+		}
+		return -1;
 	}
 	
 	private String getSaltString(int len) {
