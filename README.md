@@ -41,6 +41,8 @@ def stuff(input):
   <do stuff>
   return stuff
 x = stuff(4)
+
+functions don't currently work when nested inside another variable either.
 ```
 ### Mathematical Operators
 ```
