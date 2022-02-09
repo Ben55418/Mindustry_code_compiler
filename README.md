@@ -29,6 +29,19 @@ ceil()
 sqrt()
 rand()
 ```
+### Additional functions
+```
+Defined using: def <name>(parameters):
+variables defined in parameters are Local
+Variables defined in the function are currently not local
+
+call the function either independently or within an assignment statement!
+
+def stuff(input):
+  <do stuff>
+  return stuff
+x = stuff(4)
+```
 ### Mathematical Operators
 ```
 ^
